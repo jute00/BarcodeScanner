@@ -1,13 +1,16 @@
 /**
- * cordova is available under *either* the terms of the modified BSD license *or* the
- * MIT License (2008). See http://opensource.org/licenses/alphabetical for full text.
+ * cordova is available under the MIT License (2008).
+ * See http://opensource.org/licenses/alphabetical for full text.
  *
  * Copyright (c) Matt Kane 2010
  * Copyright (c) 2011, IBM Corporation
+ * Copyright (c) 2012-2017, Adobe Systems
  */
 
 
-var exec = require("cordova/exec");
+var exec = cordova.require("cordova/exec");
+
+var scanInProgress = false;
 
 /**
  * Constructor.
@@ -57,7 +60,7 @@ function BarcodeScanner() {
         "upc_E": 32768,
         "upc_EAN_EXTENSION": 65536
     };
-};
+}
 
 /**
  * Read code from scanner.
@@ -68,13 +71,18 @@ function BarcodeScanner() {
  *        cancelled : true/false, // Was canceled.
  *    }
  * @param {Function} errorCallback
+ * @param config
  */
 BarcodeScanner.prototype.scan = function (successCallback, errorCallback, config) {
 
-    if(config instanceof Array) {
+    if (config instanceof Array) {
         // do nothing
     } else {
-        if(typeof(config) === 'object') {
+        if (typeof(config) === 'object') {
+            // string spaces between formats, ZXing does not like that
+            if (config.formats) {
+                config.formats = config.formats.replace(/\s+/g, '');
+            }
             config = [ config ];
         } else {
             config = [];
@@ -96,7 +104,30 @@ BarcodeScanner.prototype.scan = function (successCallback, errorCallback, config
         return;
     }
 
-    exec(successCallback, errorCallback, 'BarcodeScanner', 'scan', config);
+    if (scanInProgress) {
+        errorCallback('Scan is already in progress');
+        return;
+    }
+
+    scanInProgress = true;
+
+    exec(
+        function(result) {
+            scanInProgress = false;
+            // work around bug in ZXing library
+            if (result.format === 'UPC_A' && result.text.length === 13) {
+                result.text = result.text.substring(1);
+            }
+            successCallback(result);
+        },
+        function(error) {
+            scanInProgress = false;
+            errorCallback(error);
+        },
+        'BarcodeScanner',
+        'scan',
+        config
+    );
 };
 
 //-------------------------------------------------------------------
